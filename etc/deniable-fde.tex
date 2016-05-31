@@ -1,0 +1,231 @@
+\documentclass{acm_proc_article-sp}
+
+\begin{document}
+
+\title{A provably deniable full-disk encryption system}
+
+\numberofauthors{2} 
+\author{
+\alignauthor
+Petros Angelatos\\
+       \affaddr{resin.io}\\
+       \email{petrosagg@resin.io}
+\alignauthor
+Dionysis Zindros\\
+       \affaddr{University of Athens}\\
+       \email{dionyziz@gmail.com}
+}
+
+\date{June 2016}
+
+\maketitle
+\begin{abstract}
+Deniable full-disk encryption has been a long-standing practical problem. While
+there have been numerous attempts at attacking the problem, they either do not
+achieve full indistinguishability or are impractical to implement while
+maintaining backwards compatibility with existing mainstream operating systems.
+In this work, we introduce a formal model for the successful
+indistinguishability requirements of deniable full-disk encryption. We present
+a deniable full-disk encryption scheme based on LVM thin provisioning which
+works in a backwards-compatible manner on existing popular Linux distributions
+such as Ubuntu, prove its indistinguishability, and provide a complete
+production ready implementation.
+\end{abstract}
+
+\section{Previous work}
+
+We are exploring the possibility of constructing a deniable FDE scheme based on
+the premise of indistinguishability from popular operating system
+installations.
+
+Our deniable FDE implementation is based on extending the MobiPluto paper
+\cite{c0} and our model is based on existing desirable features for deniable
+FDE \cite{c1}.
+
+Existing solutions for deniable FDE are insufficient. Solutions that offer
+deniability as their main feature, such as MobiPluto, are obviously
+self-invalidating, as their very use brings suspicion of deniability use. Other
+existing solutions are either no longer maintained, such as TrueCrypt \cite{c5}
+developed by anonymous hackers and Rubberhose \cite{c6} developed by Julian
+Assange, Suelette Dreyfus, etc., or purely theoretical and without an
+implementation.
+
+\section{Our contributions}
+
+Firstly, there seems to be no formal model for describing deniable FDE
+features. We introduce a more precise model of deniability in an FDE setting
+based on the plausibly deniable encryption paper, which considers some informal
+characteristics and features.
+
+Additionally, we provide a practical production-grade implementation for the
+Linux kernel which achieves indistinguishability against the Ubuntu system.
+
+\section{Formal full-disk deniability}
+
+In our description, we compare two world views that the deniability adversary
+is comparing: First, the view of a hard drive with deniability disabled
+(Alice); and second, the view of a hard drive with deniability enabled (Bob).
+
+In the threat model, the adversary can take a single hard drive snapshot only
+once during their use, i.e. the attacker does not have multiple snapshots
+during different times of hard drive use. This is following Schneier's
+"one-time access" restriction \cite{c4}. Then, we say that FDE satisfies the
+deniability property if the snapshot of Alice's hard drive along with the FDE
+decryption password and Bob's hard drive providing the decoy FDE password are
+informationally indistinguishable. Specifically, for all Bob's hard drive
+snapshots accompanied with an FDE decoy decryption key, there exists an Alice's
+hard drive snapshot accompanied with the same FDE decryption key which is
+identical.
+
+Snapshots of hard drive data are treated as simple strings – no additional
+physical information such as physical hard drive state is considered. This is
+important to note, as forensic analysis of physical properties could destroy
+deniability. Note also that this theoretical definition may not be enough for a
+practical defence: The decoy system has to remain in occasional use in order to
+be plausible; a system that remains unused for years is suspicious. At least in
+the full-disk deniable encryption case, we can provide some strong assurances
+that the data is indistinguishable a the block level (in cases where a part of
+the disk drive is deniably encrypted, and not a whole operating system,
+deniable disk encryption fails due to metadata \cite{c3}).
+
+Any proofs of security need to assume that AES or in general the symmetric
+cipher used to achieve disk encryption behaves like a random permutation.
+
+\section{The Ubuntu decoy system}
+
+The view of Alice must be a hard drive view which is constructed by popular
+operating systems during installation without unusual configuration. In our
+construction, we choose as the view of Alice the default Ubuntu installation in
+which full-disk encryption is enabled, LVM is enabled [see Figure 1 – both
+checkmarks must be ticked], and the user has chosen to wipe the disk with
+randomness [see Figure 2 – the checkmark must be ticked]. This is a plausible
+system, because many people are using such configurations, as it is as simple
+as ticking two checkboxes during Ubuntu's installation (statistical
+experimental data on how popular this installation scheme is should be
+collected for completeness). Similar options also exist for alternative
+distributions such as Mint, but in this first attempt we will concentrate on
+indistinguishability from Ubuntu. Then Alice's view is shown in Figure 3.
+
+We assume that one physical disk is used and that three partitions are created
+during the installation: One boot partition, one swap partition, and one root
+partition. Under these assumptions, the view of the hard drive based on the
+default installation parameters is as above. The MBR section at the beginning
+of the disk drive is 512 bytes and contains unencrypted code that runs during
+boot and jumps to the /boot partition for loading the boot loader. Space A is a
+small unallocated block which contains uniformly random data and is 1MB - 512
+in size (i.e. |MBR| + |Space A| = 1MB). Following is the /boot partition, which
+contains the unencrypted boot loader and kernel. Following the /boot partition
+is Space B, which is another unallocated disk block 1MB in size. After that,
+the LVM partition appears, which is used as the physical volume storing the LVM
+volume group, and takes up the rest of the disk drive. The LVM volume group
+contains two logical volumes, the /root partition and the swap partition. The
+LVM physical volume of which the LVM volume group is constructed is a linux
+block device and is encrypted at the block level using LUKS.
+
+Due to LVM being in use in Alice's case, blocks will be allocated at
+partitioning time to construct a mapping between the physical LVM volume and
+the logical volume blocks. This mapping information will be stored unencrypted
+in a special location at the beginning of the LVM physical volume \cite{c7}.
+When data is written to the / or the swap logical partitions, they will be
+mapped by LVM to the appropriate physical volume block, which will then be
+written to disk.
+
+The blocks of the physical volume that correspond to logical volume blocks that
+have never been written to will contain uniformly random data due to the
+original wiping applied during OS installation.
+
+\section{Our deniable file system}
+
+In our proposal, we allow Bob to have a hard drive which is indistinguishable
+from Alice’s hard drive. However, a small additional USB drive is required.
+This USB stick contains only data that is only available. It does not contain
+secret or encrypted data. The USB stick is a modification of the standard
+Ubuntu LiveUSB. It contains the appropriate boot loader so that a deniable
+operating system can be booted and the deniable partition can be mounted, given
+the appropriate passwords. The USB stick also allows Bob to boot into the decoy
+system while mounting it safely. It is critical that this USB stick is not
+found by the adversary; the existence of such a USB stick would hint at the
+desire for deniability and can persuade the adversary to inquire further.
+However, the USB stick can be destroyed at any time without loss of any data,
+as it can be downloaded again in the future.
+
+The deniable operating system installation process begins by Bob booting from
+the deniable USB stick. Bob then inputs a deniable full-disk encryption
+password. That password is different from the full-disk encryption password
+used by the decoy operating system, which we call the decoy password.
+Initially, the installation proceeds to fully wipe the target hard drive with
+uniformly random data.
+
+The deniable installer first creates an LVM thin-provisioning block device.
+
+There are three ways to mount this system:
+
+Safely mount decoy operating system
+
+Mount deniable operating system
+
+Mount decoy operating system
+
+TODO: Explain them in detail. How are these mounted?
+
+When the decoy operating system operates safely, it can write to the disk
+freely. The following cases exist:
+
+An unallocated block is being written to
+
+An allocated block is being written to
+
+The metadata block is being written to
+
+TODO: Explain the cases and ensure each of them is “safe” (i.e. retains
+indistinguishability through (1) inaction, (2) our block reshuffling technique,
+(3) our metadata reallocation technique)
+
+We assume that the LVM physical volume will have some blocks allocated to it
+which remain unused, i.e. they have never been written to.
+
+We require some data to be stored on a USB stick that will be used for booting.
+This USB stick leaves no trace on the machine it's plugged into, a requirement
+put forth by Schneier \cite{c7}. This USB stick contains no secret data, but it
+is revealing of the fact that distinguishability is in use. It provides the
+boot loader for Bob’s system.
+
+\section{TO DO}
+How do we deal with SSD TRIM operations and random wiping?
+
+How to regain space lost due to deleted files?
+
+How to safely mount decoy system without leaking metadata?
+
+\section{A proof of deniability}
+
+TODO
+
+\section{Future work}
+
+Changes of major distros that will allow using deniable FDE without external
+boot device
+
+Bootloader integration
+
+\begin{thebibliography}{13}
+
+\bibitem{c1} Chang, Bing, Zhan Wang, Bo Chen, and Fengwei Zhang. "MobiPluto: File System Friendly Deniable Storage for Mobile Devices." In Proceedings of the 31st Annual Computer Security Applications Conference, pp. 381-390. ACM, 2015.
+
+\bibitem{c2} Björgvin Ragnarsson, Gabor Toth, Hanieh Bagheri, and Wicher Minnaard. "Desirable features for plausibly deniable encryption." (2012).
+
+\bibitem{c3} Czeskis, Alexei, David J. St Hilaire, Karl Koscher, Steven D. Gribble, Tadayoshi Kohno, and Bruce Schneier. "Defeating Encrypted and Deniable File Systems: TrueCrypt v5. 1a and the Case of the Tattling OS and Applications." In HotSec. 2008.
+
+\bibitem{c4} [online] URL: \url{https://www.schneier.com/blog/archives/2008/07/truecrypts_deni.html} [cited May 2016]
+
+\bibitem{c5} [online] URL: \url{https://truecrypt.ch/} [cited May 2016]
+
+\bibitem{c6} [online] URL: \url{https://web.archive.org/web/20110726185300/http://iq.org/~proff/rubberhose.org/} [cited May 2016]
+
+\bibitem{c7} [online] URL: \url{https://www.schneier.com/blog/archives/2006/04/deniable_file_s.html} [cited May 2016]
+
+\end{thebibliography}
+
+%\balancecolumns 
+
+\end{document}
